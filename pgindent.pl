@@ -115,9 +115,6 @@ sub indent_file
     # Convert // comments to /* */
     $source =~ s!^(\h*)//(.*)$!$1/* $2 */!gm;
 
-    # Avoid bug that converts 'x =- 1' to 'x = -1'
-    $source =~ s!=- !-= !g;
-
     # Mark some comments for special treatment later
     $source =~ s!/\* +---!/*---X_X!g;
 
