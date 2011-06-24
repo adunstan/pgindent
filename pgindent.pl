@@ -7,19 +7,36 @@ use File::Temp;
 use IO::Handle;
 use File::Find;
 use Getopt::Long;
+use Cwd qw(abs_path getcwd);
 
-my ($typedefs_file, $search_base, $excludes, $indent);
+my ($typedefs_file, $code_base, $excludes, $indent, 
+	$build);
 my %options =(
     "typedefs=s" => \$typedefs_file,
-    "search-base=s" => \$search_base,
+    "code-base=s" => \$code_base,
     "excludes=s" => \$excludes,
     "indent=s" => \$indent,
+	"build" => \$build,
 );
-GetOptions(%options,@_) || die "bad command line";
+GetOptions(%options) || die "bad command line";
 
-# legacy settings
-$typedefs_file  ||= shift;
+run_build($code_base) 
+  if ($build);
+
+# legacy settings and defaults
+$typedefs_file  ||= shift unless @ARGV && $ARGV[0] !~ /\\.[ch]$/ ;
+$typedefs_file ||= $ENV{PGTYPEDEFS};
+foreach my $try ('.','src/tools/pgindent','/usr/local/etc')
+{
+	$typedefs_file ||= "$try/typedefs.list"
+	  if (-f "$try/typedefs.list");
+}
 $indent ||= $ENV{PGINDENT} || $ENV{INDENT} || "indent";
+my $entab = $ENV{PGENTAB} || "entab";
+$code_base ||= '.' 
+  unless @ARGV;
+$excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns" 
+  if $code_base;
 
 my @files;
 
@@ -34,8 +51,9 @@ File::Find::find(
               &&push(@files,$File::Find::name);
           }
     },
-    $search_base
-)if $search_base;
+    $code_base
+) 
+  if $code_base;
 
 if ($excludes && @files)
 {
@@ -62,7 +80,7 @@ close($tdfile);
 chomp @typedefs;
 @typedefs = grep {!/^(FD_SET|date|interval|timestamp|ANY)$/ } @typedefs;
 
-system('entab </dev/null >/dev/null');
+system('$entab </dev/null >/dev/null');
 if ($?)
 {
     print  STDERR
@@ -91,10 +109,18 @@ else
     $extra_opts = "-cli1";
 }
 
-foreach my $sourcefile (@files,@ARGV)
+push(@files,@ARGV);
+#print "indent: $indent, entab: $entab\nfiles:",scalar(@files),"\n";
+#printf "code_base: %s\n", (defined($code_base) ? $code_base : '.');
+
+
+foreach my $sourcefile (@files)
 {
     indent_file($sourcefile,\@typedefs);
 }
+
+build_clean($code_base) 
+  if $build;
 
 exit;
 
@@ -250,6 +276,8 @@ sub indent_file
     #  Indent should do this, but it does not.  It formats prototypes just
     #  like real functions.
 
+    # diff ($bsource,$source,"-u");
+
     my $ident = qr/[a-zA-Z_][a-zA-Z_0-9]*/;
     my $comment = qr!/\*.*\*/!;
 
@@ -307,6 +335,8 @@ sub run_indent
 
     my $cmd = "$indent $indent_opts $extra_opts " . join(" ", @srctypedefs);
 
+#	print "cmd: $cmd\n";
+
     my $fh = new File::Temp(TEMPLATE => "pgsrcXXXXX");
     my $filename = $fh->filename;
     print $fh $source;
@@ -343,7 +373,7 @@ sub detab
     print $fh $source;
     $fh->autoflush(1);
     my $detab;
-    open($detab,"detab -t4 -qc $filename |");
+    open($detab,"$entab -d -t4 -qc $filename |");
     local($/)=undef;
     $source = <$detab>;
     return $source;
@@ -356,10 +386,11 @@ sub entab
     my $filename = $fh->filename;
     print $fh $source;
     $fh->autoflush(1);
-    my $entab;
-    open($entab,"detab -t8 -qc $filename | entab -t4 -qc |");
+    my $entabf;
+    open($entabf,"$entab -d -t8 -qc $filename | $entab -t4 -qc |");
     local($/)=undef;
-    $source = <$entab>;
+    $source = <$entabf>;
+	close($entabf);
     return $source;
 }
 
@@ -380,4 +411,77 @@ sub diff
     $bfh->autoflush(1);
     $afh->autoflush(1);
     system("diff $flags $bfname $afname >&2");
+}
+
+
+sub run_build
+{
+
+	eval "use LWP::Simple;";
+
+	my $code_base = shift || '.';
+	my $save_dir = getcwd();
+
+	# look for the code root
+	foreach (1..5)
+	{
+		last if -d "$code_base/src/tools/pgindent";
+		$code_base = "$code_base/..";
+	}
+
+	die "no src/tools/pgindent directory in $code_base"
+	  unless -d "$code_base/src/tools/pgindent";
+
+	chdir  "$code_base/src/tools/pgindent";
+
+	my $rv = getstore("http://buildfarm.postgresql.org/cgi-bin/typedefs.pl",
+					  "tmp_typedefs.list");
+
+	die "fetching typedefs.list" unless is_success($rv);
+
+	$ENV{PGTYPEDEFS}= abs_path('tmp_typedefs.list');
+
+	$rv = getstore("ftp://ftp.postgresql.org/pub/dev/indent.netbsd.patched.tgz",
+			"indent.netbsd.patched.tgz");
+
+	die "fetching indent.netbsd.patched.tgz" unless is_success($rv);
+
+	# XXX add error checking here
+
+	mkdir "bsdindent";
+	chdir "bsdindent";
+	system ("tar -z -xf ../indent.netbsd.patched.tgz");
+	system("make >/dev/null 2>&1");
+
+	$ENV{PGINDENT} = abs_path('indent');
+
+	chdir "../../entab";
+
+	system("make >/dev/null 2>&1");
+	
+	$ENV{PGENTAB} = abs_path('entab');
+
+	chdir $save_dir;
+	
+}
+
+sub build_clean
+{
+	my $code_base = shift || '.';
+
+	# look for the code root
+	foreach (1..5)
+	{
+		last if -d "$code_base/src/tools/pgindent";
+		$code_base = "$code_base/..";
+	}
+
+	die "no src/tools/pgindent directory in $code_base"
+	  unless -d "$code_base/src/tools/pgindent";
+
+	chdir "$code_base";
+
+	system("rm -rf src/tools/pgindent/bsdindent");
+	system("git clean -q -f src/tools/entab src/tools/pgindent");
+
 }
