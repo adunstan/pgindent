@@ -9,40 +9,39 @@ use File::Find;
 use Getopt::Long;
 use Cwd qw(abs_path getcwd);
 
-my ($typedefs_file, $code_base, $excludes, $indent, 
-	$build);
+my ($typedefs_file, $code_base, $excludes, $indent,$build);
 my %options =(
     "typedefs=s" => \$typedefs_file,
     "code-base=s" => \$code_base,
     "excludes=s" => \$excludes,
     "indent=s" => \$indent,
-	"build" => \$build,
+    "build" => \$build,
 );
 GetOptions(%options) || die "bad command line";
 
-run_build($code_base) 
+run_build($code_base)
   if ($build);
 
 # legacy settings and defaults
 
 # try fairly hard to find the typedefs file if it's not set
-# command line option wins, then first non-option arg, 
-# then environment (which is how --build sets it) , 
+# command line option wins, then first non-option arg,
+# then environment (which is how --build sets it) ,
 # then locations. based on current dir, then default location
-$typedefs_file  ||= shift unless @ARGV && $ARGV[0] !~ /\\.[ch]$/ ;
+$typedefs_file  ||= shift unless @ARGV && $ARGV[0] !~ /\\.[ch]$/;
 $typedefs_file ||= $ENV{PGTYPEDEFS};
 foreach my $try ('.','src/tools/pgindent','/usr/local/etc')
 {
-	$typedefs_file ||= "$try/typedefs.list"
-	  if (-f "$try/typedefs.list");
+    $typedefs_file ||= "$try/typedefs.list"
+      if (-f "$try/typedefs.list");
 }
 my $tdtry = "..";
 foreach (1..5)
 {
-	last if $typedefs_file;
-	$typedefs_file ||= "$tdtry/src/tools/pgindent/typedefs.list"
-	  if (-f "$tdtry/src/tools/pgindent/typedefs.list");
-	$tdtry = "$tdtry/..";
+    last if $typedefs_file;
+    $typedefs_file ||= "$tdtry/src/tools/pgindent/typedefs.list"
+      if (-f "$tdtry/src/tools/pgindent/typedefs.list");
+    $tdtry = "$tdtry/..";
 }
 die "no typedefs file" unless $typedefs_file && -f $typedefs_file;
 
@@ -52,12 +51,12 @@ my $entab = $ENV{PGENTAB} || "entab";
 
 # no non-option arguments given. so do everything
 # under the current directory
-$code_base ||= '.' 
+$code_base ||= '.'
   unless @ARGV;
 
 # if it's the base of a postgres tree, we will exclude the files
 # postgres wants excluded
-$excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns" 
+$excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns"
   if $code_base;
 
 my @files;
@@ -65,8 +64,7 @@ my @files;
 # get the list of files under code base, if it's set
 File::Find::find(
     {
-        wanted =>sub
-        {
+        wanted =>sub{
             my ($dev,$ino,$mode,$nlink,$uid,$gid);
             (($dev,$ino,$mode,$nlink,$uid,$gid) = lstat($_))
               &&-f _
@@ -75,8 +73,7 @@ File::Find::find(
           }
     },
     $code_base
-) 
-  if $code_base;
+)if $code_base;
 
 # exclude files postgres wants excluded, if we know what they are
 if ($excludes && @files)
@@ -104,6 +101,7 @@ chomp @typedefs;
 
 # Common indent settings
 my $indent_opts ="-bad -bap -bc -bl -d0 -cdb -nce -nfc1 -di12 -i4 -l79 -lp -nip -npro -bbb";
+
 # indent-dependant settings
 my $extra_opts = "";
 
@@ -138,7 +136,7 @@ else
     $extra_opts = "-cli1";
 }
 
-# make sure we process any non-option arguments. 
+# make sure we process any non-option arguments.
 push(@files,@ARGV);
 
 #print "indent: $indent, entab: $entab\nfiles:",scalar(@files),"\n";
@@ -151,7 +149,7 @@ foreach my $sourcefile (@files)
 }
 
 # cleanup from build
-build_clean($code_base) 
+build_clean($code_base)
   if $build;
 
 exit;
@@ -368,7 +366,7 @@ sub run_indent
 
     my $cmd = "$indent $indent_opts $extra_opts " . join(" ", @srctypedefs);
 
-#	print "cmd: $cmd\n";
+    #	print "cmd: $cmd\n";
 
     my $fh = new File::Temp(TEMPLATE => "pgsrcXXXXX");
     my $filename = $fh->filename;
@@ -423,7 +421,7 @@ sub entab
     open($entabf,"$entab -d -t8 -qc $filename | $entab -t4 -qc |");
     local($/)=undef;
     $source = <$entabf>;
-	close($entabf);
+    close($entabf);
     return $source;
 }
 
@@ -446,75 +444,73 @@ sub diff
     system("diff $flags $bfname $afname >&2");
 }
 
-
 sub run_build
 {
 
-	eval "use LWP::Simple;";
+    eval "use LWP::Simple;";
 
-	my $code_base = shift || '.';
-	my $save_dir = getcwd();
+    my $code_base = shift || '.';
+    my $save_dir = getcwd();
 
-	# look for the code root
-	foreach (1..5)
-	{
-		last if -d "$code_base/src/tools/pgindent";
-		$code_base = "$code_base/..";
-	}
+    # look for the code root
+    foreach (1..5)
+    {
+        last if -d "$code_base/src/tools/pgindent";
+        $code_base = "$code_base/..";
+    }
 
-	die "no src/tools/pgindent directory in $code_base"
-	  unless -d "$code_base/src/tools/pgindent";
+    die "no src/tools/pgindent directory in $code_base"
+      unless -d "$code_base/src/tools/pgindent";
 
-	chdir  "$code_base/src/tools/pgindent";
+    chdir  "$code_base/src/tools/pgindent";
 
-	my $rv = getstore("http://buildfarm.postgresql.org/cgi-bin/typedefs.pl",
-					  "tmp_typedefs.list");
+    my $rv = getstore("http://buildfarm.postgresql.org/cgi-bin/typedefs.pl","tmp_typedefs.list");
 
-	die "fetching typedefs.list" unless is_success($rv);
+    die "fetching typedefs.list" unless is_success($rv);
 
-	$ENV{PGTYPEDEFS}= abs_path('tmp_typedefs.list');
+    $ENV{PGTYPEDEFS}= abs_path('tmp_typedefs.list');
 
-	$rv = getstore("ftp://ftp.postgresql.org/pub/dev/indent.netbsd.patched.tgz",
-			"indent.netbsd.patched.tgz");
+    $rv = getstore("ftp://ftp.postgresql.org/pub/dev/indent.netbsd.patched.tgz",
+        "indent.netbsd.patched.tgz");
 
-	die "fetching indent.netbsd.patched.tgz" unless is_success($rv);
+    die "fetching indent.netbsd.patched.tgz" unless is_success($rv);
 
-	# XXX add error checking here
+    # XXX add error checking here
 
-	mkdir "bsdindent";
-	chdir "bsdindent";
-	system ("tar -z -xf ../indent.netbsd.patched.tgz");
-	system("make >/dev/null 2>&1");
+    mkdir "bsdindent";
+    chdir "bsdindent";
+    system("tar -z -xf ../indent.netbsd.patched.tgz");
+    system("make >/dev/null 2>&1");
 
-	$ENV{PGINDENT} = abs_path('indent');
+    $ENV{PGINDENT} = abs_path('indent');
 
-	chdir "../../entab";
+    chdir "../../entab";
 
-	system("make >/dev/null 2>&1");
-	
-	$ENV{PGENTAB} = abs_path('entab');
+    system("make >/dev/null 2>&1");
 
-	chdir $save_dir;
-	
+    $ENV{PGENTAB} = abs_path('entab');
+
+    chdir $save_dir;
+
 }
 
 sub build_clean
 {
-	my $code_base = shift || '.';
+    my $code_base = shift || '.';
 
-	# look for the code root
-	foreach (1..5)
-	{
-		last if -d "$code_base/src/tools/pgindent";
-		$code_base = "$code_base/..";
-	}
+    # look for the code root
+    foreach (1..5)
+    {
+        last if -d "$code_base/src/tools/pgindent";
+        $code_base = "$code_base/..";
+    }
 
-	die "no src/tools/pgindent directory in $code_base"
-	  unless -d "$code_base/src/tools/pgindent";
+    die "no src/tools/pgindent directory in $code_base"
+      unless -d "$code_base/src/tools/pgindent";
 
-	chdir "$code_base";
+    chdir "$code_base";
 
-	system("rm -rf src/tools/pgindent/bsdindent");
-	system("git clean -q -f src/tools/entab src/tools/pgindent");
+    system("rm -rf src/tools/pgindent/bsdindent");
+    system("git clean -q -f src/tools/entab src/tools/pgindent");
 
 }
