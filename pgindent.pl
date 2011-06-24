@@ -24,6 +24,11 @@ run_build($code_base)
   if ($build);
 
 # legacy settings and defaults
+
+# try fairly hard to find the typedefs file if it's not set
+# command line option wins, then first non-option arg, 
+# then environment (which is how --build sets it) , 
+# then locations. based on current dir, then default location
 $typedefs_file  ||= shift unless @ARGV && $ARGV[0] !~ /\\.[ch]$/ ;
 $typedefs_file ||= $ENV{PGTYPEDEFS};
 foreach my $try ('.','src/tools/pgindent','/usr/local/etc')
@@ -31,15 +36,33 @@ foreach my $try ('.','src/tools/pgindent','/usr/local/etc')
 	$typedefs_file ||= "$try/typedefs.list"
 	  if (-f "$try/typedefs.list");
 }
+my $tdtry = "..";
+foreach (1..5)
+{
+	last if $typedefs_file;
+	$typedefs_file ||= "$tdtry/src/tools/pgindent/typedefs.list"
+	  if (-f "$tdtry/src/tools/pgindent/typedefs.list");
+	$tdtry = "$tdtry/..";
+}
+die "no typedefs file" unless $typedefs_file && -f $typedefs_file;
+
+# build mode sets PGINDENT and PGENTAB
 $indent ||= $ENV{PGINDENT} || $ENV{INDENT} || "indent";
 my $entab = $ENV{PGENTAB} || "entab";
+
+# no non-option arguments given. so do everything
+# under the current directory
 $code_base ||= '.' 
   unless @ARGV;
+
+# if it's the base of a postgres tree, we will exclude the files
+# postgres wants excluded
 $excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns" 
   if $code_base;
 
 my @files;
 
+# get the list of files under code base, if it's set
 File::Find::find(
     {
         wanted =>sub
@@ -55,6 +78,7 @@ File::Find::find(
 ) 
   if $code_base;
 
+# exclude files postgres wants excluded, if we know what they are
 if ($excludes && @files)
 {
     my $eh;
@@ -70,15 +94,20 @@ if ($excludes && @files)
     close($eh);
 }
 
-my $indent_opts ="-bad -bap -bc -bl -d0 -cdb -nce -nfc1 -di12 -i4 -l79 -lp -nip -npro -bbb";
-my $extra_opts = "";
-
+# read in and filter the typedefs
 my $tdfile;
 open($tdfile,$typedefs_file) || die "opening $typedefs_file: $!";
 my @typedefs = <$tdfile>;
 close($tdfile);
 chomp @typedefs;
 @typedefs = grep {!/^(FD_SET|date|interval|timestamp|ANY)$/ } @typedefs;
+
+# Common indent settings
+my $indent_opts ="-bad -bap -bc -bl -d0 -cdb -nce -nfc1 -di12 -i4 -l79 -lp -nip -npro -bbb";
+# indent-dependant settings
+my $extra_opts = "";
+
+# make sure we have working indent and entab
 
 system('$entab </dev/null >/dev/null');
 if ($?)
@@ -109,22 +138,26 @@ else
     $extra_opts = "-cli1";
 }
 
+# make sure we process any non-option arguments. 
 push(@files,@ARGV);
+
 #print "indent: $indent, entab: $entab\nfiles:",scalar(@files),"\n";
 #printf "code_base: %s\n", (defined($code_base) ? $code_base : '.');
 
-
+# run the indent
 foreach my $sourcefile (@files)
 {
     indent_file($sourcefile,\@typedefs);
 }
 
+# cleanup from build
 build_clean($code_base) 
   if $build;
 
 exit;
 
 #########################################################
+# subroutines
 
 sub indent_file
 {
