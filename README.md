@@ -10,7 +10,9 @@ or the environment.
 In its simplest form, if all the required objects are installed, simply run
 it without any parameters at the top of the source tree you want to process.
 
-*** pgindent.pl ***
+*** 
+pgindent.pl 
+***
 
 If you don't have all the requirements installed, pgindent will fetch and build 
 them for you, if you're in a PostgreSQL source tree:
