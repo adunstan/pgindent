@@ -57,7 +57,7 @@ $code_base ||= '.'
 # if it's the base of a postgres tree, we will exclude the files
 # postgres wants excluded
 $excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns"
-  if $code_base;
+  if $code_base && -f "$code_base/src/tools/pgindent/exclude_file_patterns";
 
 my @files;
 

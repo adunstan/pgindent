@@ -1,9 +1,8 @@
 src/tools/pgindent/README
 
-pgindent.pl
-===========
+# pgindent.pl #
 
-pgindent.pl cwill indent .c amd .h files according to the coding standards of
+pgindent.pl will indent .c amd .h files according to the coding standards of
 the PostgreSQL project. It needs several things to run, and tries to locate
 or build them if possible. They can also be specified via command line switches
 or the environment.
