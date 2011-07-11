@@ -18,13 +18,17 @@ If you don't have all the requirements installed, pgindent will fetch and build
 them for you, if you're in a PostgreSQL source tree:
 
 
-*** pgindent.pl --build ***
+```
+pgindent.pl --build
+```
 
 If your indent program is not installed in your path, you can specify it
 by setting the environment variable INDENT, or PGINDENT, or by giving the
 command line option --indent:
 
-*** pgindent.pl --indent=/opt/extras/bsdindent ***
+```
+pgindent.pl --indent=/opt/extras/bsdindent
+```
 
 Similarly, the entab program can be specified using the PGENTAB environment
 variable, or using the --entab command line option.
